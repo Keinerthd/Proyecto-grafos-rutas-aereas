@@ -126,26 +126,90 @@ def main():
     # ---------------- REQUISITO 1 ----------------
     if "1. Conexidad" in sidebar_menu:
         st.header("1. Determinación de Conexidad del Grafo")
+        
+        st.markdown("""
+        > **Interpretación Analítica:** La red aérea mundial presenta una estructura altamente conectada donde la mayoría de aeropuertos pertenecen a una componente gigante. Sin embargo, existen pequeñas componentes aisladas que representan redes regionales o aeropuertos con baja conectividad.
+        """)
+        
         with st.spinner("Calculando Búsqueda en Anchura (BFS)..."):
             components = get_components_data()
             
         is_connected = len(components) == 1
         
+        total_vertices = len(graph.get_vertices())
+        table_data = []
+        for i, comp in enumerate(sorted(components, key=len, reverse=True)[:15]):
+            comp_set = set(comp)
+            edges_count = 0
+            visited_edges = set()
+            for u in comp:
+                for v in graph.adj_list.get(u, {}):
+                    if v in comp_set:
+                        edge = tuple(sorted([u, v]))
+                        if edge not in visited_edges:
+                            visited_edges.add(edge)
+                            edges_count += 1
+            
+            pct = (len(comp) / total_vertices) * 100 if total_vertices > 0 else 0
+            table_data.append({
+                "Componente": i + 1,
+                "Vértices": len(comp),
+                "Aristas": edges_count,
+                "% del Grafo": f"{pct:.2f}%"
+            })
+            
+        st.subheader("Análisis Estructural de Componentes")
+        st.table(table_data)
+        
         if is_connected:
             st.success(f"El grafo generado **es conexo**. Consiste de un bloque gigante de {len(components[0])} vértices.")
         else:
-            st.warning(f"El grafo generado **no es conexo**.")
-            st.write(f"Se encontraron **{len(components)} componentes conexas** en total.")
-            st.write("A continuación se muestra la cantidad de vértices por cada componente (mostrando las 15 más grandes):")
+            st.warning(f"El grafo generado **no es conexo**. Se encontraron **{len(components)} componentes conexas** en total.")
             
-            # Ordenamos componentes por tamaño de mayor a menor para visualizar
-            components_sorted = sorted(components, key=len, reverse=True)
-            for i, comp in enumerate(components_sorted[:15]):
-                st.markdown(f"- **Componente {i+1}:** {len(comp)} vértices.")
+        st.subheader("Visualización de Componentes (Muestra)")
+        st.write("A continuación se muestra una representación geográfica de un subconjunto de la componente principal y una componente aislada.")
+        
+        col1, col2 = st.columns(2)
+        components_sorted = sorted(components, key=len, reverse=True)
+        main_comp = components_sorted[0]
+        small_comps = [c for c in components_sorted[1:] if len(c) > 1]
+        small_comp = small_comps[0] if small_comps else (components_sorted[1] if len(components_sorted) > 1 else None)
+        
+        with col1:
+            st.write("**Componente Principal (Muestra 100 nodos)**")
+            m_main = folium.Map(location=[20, 0], zoom_start=1)
+            sample_nodes = main_comp[:100] if len(main_comp) > 100 else main_comp
+            for node in sample_nodes:
+                info = graph.airports[node]
+                folium.CircleMarker(
+                    location=[info['lat'], info['lon']],
+                    radius=3, color='blue', fill=True, popup=info['name']
+                ).add_to(m_main)
+            st_folium(m_main, width=400, height=300, key="m_main", returned_objects=[])
+            
+        with col2:
+            if small_comp:
+                st.write(f"**Componente Menor ({len(small_comp)} nodos)**")
+                info = graph.airports[small_comp[0]]
+                m_small = folium.Map(location=[info['lat'], info['lon']], zoom_start=4)
+                for node in small_comp:
+                    ninfo = graph.airports[node]
+                    folium.Marker(
+                        location=[ninfo['lat'], ninfo['lon']],
+                        popup=ninfo['name'], icon=folium.Icon(color='red')
+                    ).add_to(m_small)
+                st_folium(m_small, width=400, height=300, key="m_small", returned_objects=[])
+            else:
+                st.write("No hay componentes menores para mostrar.")
 
     # ---------------- REQUISITO 2 ----------------
     elif "2. Grafo Bipartito" in sidebar_menu:
         st.header("2. Verificación de Grafo Bipartito")
+        
+        st.info("""
+        **Definición Teórica:** Un grafo bipartito es aquel cuyos vértices pueden dividirse en dos conjuntos disjuntos sin que existan conexiones entre vértices del mismo conjunto. Un grafo es bipartito sí y solo sí no contiene **ciclos de longitud impar**.
+        """)
+        
         components = get_components_data()
         
         # Filtrar la más grande
@@ -154,36 +218,124 @@ def main():
         st.write(f"Al haber revisado las {len(components)} componentes, procederemos a evaluar **la componente más grande** que cuenta con {len(largest_component)} vértices.")
         
         with st.spinner("Ejecutando recorrido bicolor en BFS..."):
-            bipartite = is_bipartite(graph, largest_component)
+            bipartite, odd_cycle = is_bipartite(graph, largest_component)
             
         if bipartite:
             st.success("La componente más grande generada **ES bipartita**.")
         else:
             st.error("La componente más grande generada **NO ES bipartita** (contiene ciclos de longitud impar).")
+            st.markdown("""
+            > **Interpretación Aplicada:** La presencia de ciclos impares evidencia una estructura compleja de interconexiones dentro de la red aérea, característica común en sistemas de transporte reales.
+            """)
+            
+            st.subheader("Evidencia: Ciclo Impar Encontrado")
+            st.write(f"Se detectó un ciclo de {len(odd_cycle)-1} aristas: " + " -> ".join(odd_cycle))
+            
+            m_cycle = folium.Map(location=[20, 0], zoom_start=2)
+            coords = []
+            for i, node in enumerate(odd_cycle):
+                info = graph.airports[node]
+                lat, lon = info['lat'], info['lon']
+                coords.append((lat, lon))
+                folium.Marker(
+                    [lat, lon],
+                    popup=f"Paso {i}: {node} - {info['name']}",
+                    icon=folium.Icon(color='red', icon='info-sign')
+                ).add_to(m_cycle)
+                
+            folium.PolyLine(coords, color='red', weight=3, opacity=0.8).add_to(m_cycle)
+            if coords:
+                m_cycle.fit_bounds(m_cycle.get_bounds())
+                
+            st_folium(m_cycle, width=800, height=400, returned_objects=[])
 
     # ---------------- REQUISITO 3 ----------------
     elif "3. Árbol" in sidebar_menu:
         st.header("3. Árbol de Expansión Mínima (MST)")
+        st.markdown("""
+        > **Interpretación Analítica:** El árbol de expansión mínima logra mantener la conectividad de la red utilizando el menor número posible de conexiones, minimizando además el peso total de la red (distancia).
+        """)
+        
         components = get_components_data()
         st.write("Calculando MST utilizando el **Algoritmo de Kruskal** implementado matemáticamente con estructura *Disjoint-Set*.")
         
-        # Calculamos solo los que no son componentes de 1 nodo (que pesan 0 y no tienen aristas)
+        # Calculamos solo los que no son componentes de 1 nodo
         valid_components = [c for c in components if len(c) > 1]
         valid_components.sort(key=len, reverse=True)
         
-        st.write(f"Evaluando pesos del MST en las {len(valid_components)} componentes multinodo.")
-        
-        if st.button("Generar Cálculos de Kruskal"):
-            with st.spinner("Procesando Union-Find recursivo... (Esto puede tardar unos segundos)"):
-                for i, comp in enumerate(valid_components[:10]): # Mostramos las primeras 10 si hay cientos de islas pequeñas
-                    peso, mst_edges = kruskal_mst(graph, comp)
-                    st.success(f"**Componente {i+1}** ({len(comp)} vértices, {len(mst_edges)} aristas conectadas): Peso total **{peso:,.2f} kilómetros**.")
-                if len(valid_components) > 10:
-                    st.info(f"... y {len(valid_components) - 10} componentes adicionales.")
+        if not valid_components:
+            st.warning("No hay componentes aptas.")
+        else:
+            # Seleccionar componente para graficar (tamaño moderado)
+            target_comp = next((c for c in valid_components if 10 <= len(c) <= 100), valid_components[0])
+            peso, mst_edges = kruskal_mst(graph, target_comp)
+            
+            comp_set = set(target_comp)
+            orig_edges_count = 0
+            orig_edges = []
+            visited_edges = set()
+            for u in target_comp:
+                for v in graph.adj_list.get(u, {}):
+                    if v in comp_set:
+                        edge = tuple(sorted([u, v]))
+                        if edge not in visited_edges:
+                            visited_edges.add(edge)
+                            orig_edges_count += 1
+                            orig_edges.append((u, v))
+                            
+            st.subheader("Comparación Matemática")
+            st.table([{
+                "Estructura": "Grafo Original (Subcomponente)",
+                "Vértices": len(target_comp),
+                "Aristas": orig_edges_count
+            }, {
+                "Estructura": "Árbol de Expansión Mínima (MST)",
+                "Vértices": len(target_comp),
+                "Aristas": len(mst_edges)
+            }])
+            
+            st.subheader("Visualización del MST vs Grafo Original")
+            col1, col2 = st.columns(2)
+            first_node_info = graph.airports[target_comp[0]]
+            
+            with col1:
+                st.write("**Grafo Original**")
+                m_orig = folium.Map(location=[first_node_info['lat'], first_node_info['lon']], zoom_start=4)
+                for u, v in orig_edges:
+                    iu, iv = graph.airports[u], graph.airports[v]
+                    folium.PolyLine([(iu['lat'], iu['lon']), (iv['lat'], iv['lon'])], color='gray', weight=1, opacity=0.5).add_to(m_orig)
+                for node in target_comp:
+                    info = graph.airports[node]
+                    folium.CircleMarker([info['lat'], info['lon']], radius=3, color='blue', fill=True).add_to(m_orig)
+                st_folium(m_orig, width=400, height=300, key="map_orig", returned_objects=[])
+                
+            with col2:
+                st.write("**MST Generado**")
+                m_mst = folium.Map(location=[first_node_info['lat'], first_node_info['lon']], zoom_start=4)
+                for u, v, w in mst_edges:
+                    iu, iv = graph.airports[u], graph.airports[v]
+                    folium.PolyLine([(iu['lat'], iu['lon']), (iv['lat'], iv['lon'])], color='green', weight=2, opacity=0.8).add_to(m_mst)
+                for node in target_comp:
+                    info = graph.airports[node]
+                    folium.CircleMarker([info['lat'], info['lon']], radius=3, color='green', fill=True).add_to(m_mst)
+                st_folium(m_mst, width=400, height=300, key="map_mst", returned_objects=[])
+
+            st.write("---")
+            if st.button("Generar Cálculos de Kruskal para Componentes Mayores"):
+                with st.spinner("Procesando Union-Find recursivo... (Esto puede tardar unos segundos)"):
+                    for i, comp in enumerate(valid_components[:10]): 
+                        peso, mst_edges = kruskal_mst(graph, comp)
+                        st.success(f"**Componente {i+1}** ({len(comp)} vértices, {len(mst_edges)} aristas conectadas): Peso total **{peso:,.2f} kilómetros**.")
+                    if len(valid_components) > 10:
+                        st.info(f"... y {len(valid_components) - 10} componentes adicionales.")
 
     # ---------------- REQUISITO 4 ----------------
     elif "4. Top 10" in sidebar_menu:
         st.header("4. Analítica de Caminos Mínimos (Dijkstra)")
+        
+        st.markdown("""
+        > **Interpretación Geográfica:** Las rutas más largas corresponden principalmente a regiones geográficamente aisladas o periféricas de la red mundial.
+        """)
         
         airports_list = sorted(list(graph.get_vertices()))
         selected_code = st.selectbox("Seleccione / Inserte el código IATA del Aeropuerto Origen (Ej: BOG, PTY, JFK):", airports_list)
@@ -209,15 +361,35 @@ def main():
                     sorted_furthest = sorted(reachable.items(), key=lambda item: item[1], reverse=True)[:10]
                     
                     st.write("#### Top 10 Vuelos Más Largos según camino mínimo en malla:")
+                    
+                    m_top10 = folium.Map(location=[info['lat'], info['lon']], zoom_start=2)
+                    folium.Marker([info['lat'], info['lon']], popup=f"Origen: {selected_code}", icon=folium.Icon(color='green')).add_to(m_top10)
+                    
                     for idx, (dest_code, dist) in enumerate(sorted_furthest):
                         d_info = graph.airports[dest_code]
                         st.markdown(f"{idx+1}. **{dest_code} - {d_info['name']}** ({d_info['city']}, {d_info['country']})\n"
                                     f"    - *Distancia Acumulada:* **{dist:,.2f} km**\n"
                                     f"    - Coord: {d_info['lat']}, {d_info['lon']}")
+                                    
+                        path = get_shortest_path(res, dest_code)
+                        coords = [(graph.airports[n]['lat'], graph.airports[n]['lon']) for n in path]
+                        
+                        folium.Marker([d_info['lat'], d_info['lon']], popup=f"Top {idx+1}: {dest_code} ({dist:,.0f} km)", icon=folium.Icon(color='red')).add_to(m_top10)
+                        folium.PolyLine(coords, color='red', weight=1.5, opacity=0.6).add_to(m_top10)
+                        
+                    st.write("### Visualización Geográfica de Destinos Lejanos")
+                    st_folium(m_top10, width=800, height=450, returned_objects=[])
 
     # ---------------- REQUISITO 5 ----------------
     elif "5. Trazar Camino" in sidebar_menu:
         st.header("5. Explorador Geográfico (Visualizador de Caminos Mínimos)")
+        
+        st.info("""
+        **Base Matemática y Teórica:**
+        - **Cálculo de Pesos (Haversine):** El peso de cada arista en el grafo representa la distancia geográfica real. Se utiliza la **Fórmula de Haversine**, que calcula la distancia circular mínima entre dos puntos sobre una esfera (Tierra) a partir de sus latitudes y longitudes.
+        - **Algoritmo de Dijkstra:** El algoritmo de Dijkstra permite encontrar el camino de menor costo acumulado entre un nodo origen y un nodo destino dentro de un grafo ponderado.
+        """)
+        
         
         airports_list = sorted(list(graph.get_vertices()))
         

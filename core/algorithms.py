@@ -67,13 +67,16 @@ def is_bipartite(graph, component):
         bool: True si la componente es bipartita, False en caso contrario.
     """
     if not component:
-        return True
+        return True, []
         
     color_map = {}
+    parent_map = {}
+    
     # Podría haber componentes desconectados dentro del parámetro (aunque por diseño viene conexo), iteramos de manera segura.
     for start_node in component:
         if start_node not in color_map:
             color_map[start_node] = 0
+            parent_map[start_node] = None
             queue = [start_node]
             
             while queue:
@@ -85,11 +88,50 @@ def is_bipartite(graph, component):
                         if neighbor not in color_map:
                             # Asignamos el color opuesto (1 - color actual)
                             color_map[neighbor] = 1 - current_color
+                            parent_map[neighbor] = current
                             queue.append(neighbor)
                         elif color_map[neighbor] == current_color:
-                            # Mismo color en nodos adyacentes = no es bipartito
-                            return False
-    return True
+                            # Mismo color en nodos adyacentes = no es bipartito, hemos encontrado un ciclo impar
+                            path_u = [current]
+                            curr = parent_map.get(current)
+                            while curr is not None:
+                                path_u.append(curr)
+                                curr = parent_map.get(curr)
+                                
+                            path_v = [neighbor]
+                            curr = parent_map.get(neighbor)
+                            while curr is not None:
+                                path_v.append(curr)
+                                curr = parent_map.get(curr)
+                                
+                            path_u_set = set(path_u)
+                            lca = None
+                            for node in path_v:
+                                if node in path_u_set:
+                                    lca = node
+                                    break
+                                    
+                            cycle = []
+                            for node in path_u:
+                                cycle.append(node)
+                                if node == lca:
+                                    break
+                                    
+                            v_to_lca = []
+                            for node in path_v:
+                                v_to_lca.append(node)
+                                if node == lca:
+                                    break
+                            
+                            if v_to_lca:
+                                v_to_lca.pop() # remove lca
+                                v_to_lca.reverse()
+                                cycle.extend(v_to_lca)
+                                
+                            cycle.append(current) # Cerrar el ciclo
+                            
+                            return False, cycle
+    return True, []
 
 # --- Estructura Disjoint-Set / Union-Find para Kruskal ---
 class DisjointSet:
