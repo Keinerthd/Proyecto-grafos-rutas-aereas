@@ -207,3 +207,43 @@ class FlightGraph:
                     visited.add(edge)
                     edges.append((edge[0], edge[1], weight))
         return edges
+
+    def get_degree(self, code):
+        """
+        Retorna el grado del aeropuerto, es decir, la cantidad de conexiones directas.
+
+        Parámetros:
+            code (str): Código del aeropuerto.
+
+        Retorna:
+            int: Cantidad de vecinos adyacentes.
+        """
+        return len(self.adj_list.get(code, {}))
+
+    def remove_airport(self, code):
+        """
+        Elimina un aeropuerto y todas sus conexiones incidentes.
+
+        Esto permite simular el efecto de quitar un nodo del sistema y analizar
+        cómo cambia la estructura de componentes del grafo.
+        """
+        if code not in self.adj_list:
+            return
+
+        for neighbor in list(self.adj_list[code].keys()):
+            self.adj_list[neighbor].pop(code, None)
+
+        self.adj_list.pop(code, None)
+        self.airports.pop(code, None)
+
+    def copy(self):
+        """
+        Crea una copia profunda del grafo.
+
+        Retorna:
+            FlightGraph: Copia independiente con la misma estructura de nodos y aristas.
+        """
+        new_graph = FlightGraph()
+        new_graph.airports = {code: data.copy() for code, data in self.airports.items()}
+        new_graph.adj_list = {code: neighbors.copy() for code, neighbors in self.adj_list.items()}
+        return new_graph

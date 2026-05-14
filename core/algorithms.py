@@ -319,3 +319,91 @@ def get_shortest_path(dijkstra_result, target):
         current = prev.get(current)
         
     return path
+
+
+def degree_centrality(graph, component=None):
+    """
+    Calcula la centralidad de grado de los vértices.
+
+    La centralidad de grado mide la importancia de un nodo por su número de
+    conexiones directas en el grafo o en una componente específica.
+
+    Parámetros:
+        graph (FlightGraph): Grafo completo.
+        component (list | None): Lista de vértices a evaluar. Si es None, se usan todos.
+
+    Retorna:
+        dict: Mapa {vertice: centralidad de grado normalizada}.
+    """
+    vertices = component if component is not None else graph.get_vertices()
+    n = len(vertices)
+    max_degree = n - 1 if n > 1 else 1
+    centrality = {}
+    for node in vertices:
+        degree = len(graph.adj_list.get(node, {}))
+        centrality[node] = degree / max_degree if max_degree > 0 else 0.0
+    return centrality
+
+
+def closeness_centrality(graph, component=None):
+    """
+    Calcula la centralidad de cercanía para los vértices de una componente.
+
+    La centralidad de cercanía mide qué tan cerca está un nodo del resto de la
+    componente en términos de distancia acumulada mínima.
+
+    Parámetros:
+        graph (FlightGraph): Grafo completo.
+        component (list | None): Lista de vértices a evaluar. Si es None, se usan todos.
+
+    Retorna:
+        dict: Mapa {vertice: centralidad de cercanía}.
+    """
+    vertices = component if component is not None else graph.get_vertices()
+    n = len(vertices)
+    centrality = {}
+    if n == 0:
+        return centrality
+
+    for node in vertices:
+        if n == 1:
+            centrality[node] = 0.0
+            continue
+
+        dijkstra_result = dijkstra(graph, node)
+        total_distance = 0.0
+        reachable_count = 0
+        for other in vertices:
+            if other == node:
+                continue
+            dist = dijkstra_result['distances'].get(other, float('inf'))
+            if dist != float('inf'):
+                total_distance += dist
+                reachable_count += 1
+
+        if reachable_count == 0 or total_distance == 0:
+            centrality[node] = 0.0
+        else:
+            normalizer = reachable_count / (n - 1)
+            centrality[node] = (reachable_count / total_distance) * normalizer
+    return centrality
+
+
+def remove_node_and_analyze(graph, code):
+    """
+    Crea una copia del grafo sin un aeropuerto y analiza sus componentes.
+
+    Parámetros:
+        graph (FlightGraph): Grafo original.
+        code (str): Código del aeropuerto a remover.
+
+    Retorna:
+        tuple: (FlightGraph, list) grafo modificado y lista de componentes.
+    """
+    if code not in graph.adj_list:
+        return None, []
+
+    graph_copy = graph.copy()
+    graph_copy.remove_airport(code)
+    components = find_components(graph_copy)
+    return graph_copy, components

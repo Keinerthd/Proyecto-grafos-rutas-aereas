@@ -19,7 +19,16 @@ import math
 import os
 
 from core.graph import FlightGraph
-from core.algorithms import find_components, is_bipartite, kruskal_mst, dijkstra, get_shortest_path
+from core.algorithms import (
+    find_components,
+    is_bipartite,
+    kruskal_mst,
+    dijkstra,
+    get_shortest_path,
+    degree_centrality,
+    closeness_centrality,
+    remove_node_and_analyze,
+)
 
 st.set_page_config(page_title="Rutas Aéreas - Estructura de Datos 2", layout="wide", initial_sidebar_state="expanded")
 
@@ -117,7 +126,8 @@ def main():
         "2. Grafo Bipartito",
         "3. Árbol de Expansión Mínima",
         "4. Top 10 Rutas Más Largas (Caminos Mínimos)",
-        "5. Trazar Camino Mínimo (Mapa)"
+        "5. Trazar Camino Mínimo (Mapa)",
+        "6. Centralidad y Eliminación de Nodo"
     ])
     
     st.sidebar.markdown("---")
@@ -422,6 +432,107 @@ def main():
                     # Generate Map
                     m = render_map(graph, path)
                     st_folium(m, width=800, height=500, returned_objects=[])
+
+    elif "6. Centralidad" in sidebar_menu:
+        st.header("6. Centralidad y Eliminación de Nodo")
+        st.markdown(
+            """
+            Este módulo calcula medidas de centralidad para la componente principal del grafo y simula qué ocurre cuando se elimina un aeropuerto del sistema.
+
+            - **Centralidad de Grado:** mide la importancia de un aeropuerto por la cantidad de conexiones directas.
+            - **Centralidad de Cercanía:** mide qué tan rápido se puede alcanzar el resto de la componente desde un aeropuerto.
+            - **Eliminación de Nodo:** permite ver cómo cambia la cantidad de componentes y si el grafo sigue siendo conexo.
+            """
+        )
+
+        components = get_components_data()
+        largest_component = max(components, key=len)
+        st.write(f"La componente más grande tiene **{len(largest_component)} aeropuertos**.")
+
+        with st.spinner("Calculando centralidad... Esto puede tardar unos segundos..."):
+            degree_cent = degree_centrality(graph, largest_component)
+            closeness_cent = closeness_centrality(graph, largest_component)
+
+        top_degree = sorted(degree_cent.items(), key=lambda item: item[1], reverse=True)[:10]
+        top_closeness = sorted(closeness_cent.items(), key=lambda item: item[1], reverse=True)[:10]
+
+        st.subheader("Top 10 Aeropuertos según Centralidad de Grado")
+        degree_rows = []
+        for code, value in top_degree:
+            info = graph.airports[code]
+            degree_rows.append({
+                "Código": code,
+                "Aeropuerto": info['name'],
+                "Ciudad": info['city'],
+                "País": info['country'],
+                "Centralidad de Grado": f"{value:.4f}",
+                "Conexiones": len(graph.adj_list.get(code, {}))
+            })
+        st.table(degree_rows)
+
+        st.subheader("Top 10 Aeropuertos según Centralidad de Cercanía")
+        closeness_rows = []
+        for code, value in top_closeness:
+            info = graph.airports[code]
+            closeness_rows.append({
+                "Código": code,
+                "Aeropuerto": info['name'],
+                "Ciudad": info['city'],
+                "País": info['country'],
+                "Centralidad de Cercanía": f"{value:.6f}"
+            })
+        st.table(closeness_rows)
+
+        st.write("---")
+        st.subheader("Simulación de Eliminación de Nodo")
+        airports_list = sorted(graph.get_vertices())
+        removed_node = st.selectbox("Seleccione el aeropuerto que desea quitar del sistema:", airports_list)
+
+        if st.button("Simular eliminación del aeropuerto"):
+            with st.spinner("Analizando la estructura tras eliminar el nodo..."):
+                removed_graph, new_components = remove_node_and_analyze(graph, removed_node)
+
+            if removed_graph is None:
+                st.error(f"El aeropuerto {removed_node} no existe en el grafo.")
+            else:
+                original_is_connected = len(components) == 1
+                new_is_connected = len(new_components) == 1
+                largest_after = max(len(c) for c in new_components) if new_components else 0
+                sizes = sorted([len(c) for c in new_components], reverse=True)
+
+                st.write(f"- Aeropuertos restantes: **{len(removed_graph.get_vertices())}**")
+                st.write(f"- Componentes después de eliminar {removed_node}: **{len(new_components)}**")
+                st.write(f"- Tamaño de la componente más grande después de la eliminación: **{largest_after}**")
+
+                if original_is_connected:
+                    if new_is_connected:
+                        st.success("El grafo sigue siendo conexo tras eliminar el aeropuerto seleccionado.")
+                    else:
+                        st.warning("El grafo ya no es conexo tras eliminar este aeropuerto.")
+                        st.write("Esto indica que el aeropuerto actúa como un punto de articulación en la red.")
+                else:
+                    st.info("El grafo original no era conexo. Se analiza el efecto global de la eliminación en la estructura de componentes.")
+                    if new_is_connected:
+                        st.success("Tras la eliminación, el grafo resultante quedó conexo.")
+                    else:
+                        st.warning("Tras la eliminación, el grafo resultante sigue sin ser conexo.")
+
+                component_table = []
+                for i, size in enumerate(sizes[:5], start=1):
+                    component_table.append({
+                        "Componente": i,
+                        "Tamaño": size
+                    })
+                st.table(component_table)
+
+                if len(sizes) > 5:
+                    st.write(f"...y {len(sizes) - 5} componentes adicionales más pequeños.")
+
+                st.markdown(
+                    """
+                    > **Interpretación práctica:** Si la eliminación de un nodo aumenta el número de componentes o reduce fuertemente el tamaño de la componente principal, ese aeropuerto es crítico para la conectividad de la red.
+                    """
+                )
 
 if __name__ == "__main__":
     main()
