@@ -1,4 +1,4 @@
-Laboratorio 2 - Grafos de Transporte Aéreo
+Proyecto final - Grafos de Transporte Aéreo
 
 -Descripción El presente proyecto consiste en la construcción de un grafo simple, no dirigido y ponderado, el cual modela rutas de transporte aéreo a partir de un conjunto de datos reales.
 
